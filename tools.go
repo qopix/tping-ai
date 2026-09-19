@@ -10,91 +10,80 @@ import (
 
 const workspaceDir = "./agent_workspace"
 
-// Инструмент 1: Клонирование репозитория
+// 1. Клонирование
 func CloneRepo(repoURL string) string {
-	_ = os.RemoveAll(workspaceDir) // Очищаем старый воркспейс перед клонированием нового
-
+	_ = os.RemoveAll(workspaceDir)
 	cmd := exec.Command("git", "clone", repoURL, workspaceDir)
-	err := cmd.Run()
-	if err != nil {
-		return fmt.Sprintf("Failed to clone repository: %v", err)
-	}
-	return "Repository successfully cloned into workspace. Now you should read files to analyze the source code."
+	if err := cmd.Run(); err != nil { return fmt.Sprintf("Clone failed: %v", err) }
+	return "Repository cloned successfully."
 }
 
-// Инструмент 2: Чтение содержимого и исходного кода файлов проекта
-func ReadWorkspaceFiles() string {
-	var result strings.Builder
+// 2. Просмотр папки
+func ListDirectory(path string) string {
+	targetPath := filepath.Join(workspaceDir, path)
+	files, err := os.ReadDir(targetPath)
+	if err != nil { return fmt.Sprintf("Failed to list dir: %v", err) }
 	
-	err := filepath.Walk(workspaceDir, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-		// Пропускаем папку .git
-		if info.IsDir() && info.Name() == ".git" {
-			return filepath.SkipDir
-		}
-		if info.IsDir() {
-			return nil
-		}
-
-		// Читаем только файлы кода, скрипты и документацию
-		ext := filepath.Ext(path)
-		if ext == ".cpp" || ext == ".go" || ext == ".md" || ext == ".h" || ext == ".c" || info.Name() == "Makefile" {
-			content, err := os.ReadFile(path)
-			if err == nil {
-				result.WriteString(fmt.Sprintf("\n--- FILE: %s ---\n", filepath.Base(path)))
-				result.WriteString(string(content))
-				result.WriteString("\n")
-			}
-		}
-		return nil
-	})
-
-	if err != nil {
-		return fmt.Sprintf("Error reading files: %v", err)
-	}
-	if result.Len() == 0 {
-		return "No core source files (.cpp, .go, .md, Makefile) found in the workspace."
+	var result strings.Builder
+	for _, file := range files {
+		typeStr := "File"
+		if file.IsDir() { typeStr = "Dir" }
+		result.WriteString(fmt.Sprintf("[%s] %s\n", typeStr, file.Name()))
 	}
 	return result.String()
 }
 
-// Инструмент 3: Компиляция утилиты
-func CompileProject(buildCommand string) string {
-	args := strings.Fields(buildCommand)
-	if len(args) == 0 {
-		return "Error: Empty compile command"
-	}
-
-	cmd := exec.Command(args[0], args[1:]...)
-	cmd.Dir = workspaceDir // Выполняем сборку внутри папки проекта
-
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		return fmt.Sprintf("Compilation failed: %v\nOutput:\n%s", err, string(output))
-	}
-	return fmt.Sprintf("Compilation successful!\nOutput:\n%s", string(output))
+// 3. Чтение конкретного файла
+func ReadSpecificFile(path string) string {
+	targetPath := filepath.Join(workspaceDir, path)
+	content, err := os.ReadFile(targetPath)
+	if err != nil { return fmt.Sprintf("Failed to read file: %v", err) }
+	return string(content)
 }
 
-// Инструмент 4: Выполнение скомпилированного бинарника
+// 4. Запись/Создание/Перезапись файла
+func WriteSpecificFile(params string) string {
+	parts := strings.SplitN(params, "|", 2)
+	if len(parts) < 2 { return "Error: Invalid write parameters. Use path|content" }
+	
+	targetPath := filepath.Join(workspaceDir, parts[0])
+	// Создаем подпапки, если их нет
+	_ = os.MkdirAll(filepath.Dir(targetPath), os.ModePerm)
+	
+	err := os.WriteFile(targetPath, []byte(parts[1]), 0644)
+	if err != nil { return fmt.Sprintf("Failed to write file: %v", err) }
+	return fmt.Sprintf("File %s successfully written/updated.", parts[0])
+}
+
+// 5. Удаление файла или папки
+func DeleteSpecificFile(path string) string {
+	targetPath := filepath.Join(workspaceDir, path)
+	err := os.RemoveAll(targetPath)
+	if err != nil { return fmt.Sprintf("Failed to delete: %v", err) }
+	return fmt.Sprintf("Successfully deleted %s", path)
+}
+
+// 6. Компиляция
+func CompileProject(buildCommand string) string {
+	args := strings.Fields(buildCommand)
+	if len(args) == 0 { return "Error: Empty compile command" }
+	cmd := exec.Command(args[0], args[1:]...)
+	cmd.Dir = workspaceDir
+	out, err := cmd.CombinedOutput()
+	if err != nil { return fmt.Sprintf("Compile failed: %v\n%s", err, string(out)) }
+	return fmt.Sprintf("Compilation successful!\n%s", string(out))
+}
+
+// 7. Запуск бинарников
 func RunBinary(runCommand string) string {
 	args := strings.Fields(runCommand)
-	if len(args) == 0 {
-		return "Error: Empty run command"
-	}
-
-	// Если ИИ пытается запустить локальный бинарник (например, ./tping),
-	// мы корректируем путь, так как запуск происходит из рабочей директории
+	if len(args) == 0 { return "Error: Empty run command" }
 	cmdName := args[0]
 	if strings.HasPrefix(cmdName, "./") {
 		cmdName = filepath.Join(workspaceDir, cmdName[2:])
 	}
-
 	cmd := exec.Command(cmdName, args[1:]...)
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		return fmt.Sprintf("Execution failed: %v\nOutput:\n%s", err, string(output))
-	}
-	return fmt.Sprintf("Execution result:\n%s", string(output))
+	out, err := cmd.CombinedOutput()
+	if err != nil { return fmt.Sprintf("Execution failed: %v\n%s", err, string(out)) }
+	return string(out)
 }
