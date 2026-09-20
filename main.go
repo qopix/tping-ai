@@ -9,64 +9,77 @@ import (
 
 func main() {
 	fmt.Println("==================================================================")
-	fmt.Println("🤖 TPING-AI: ПОЛНОСТЬЮ АВТОНОМНЫЙ ИИ-АГЕНТ С ОБУЧЕНИЕМ НА ХОДУ")
-	fmt.Println("Дайте ему ссылку на репозиторий GitHub и поставьте задачу.")
-	fmt.Println("Пример: 'Изучи https://github.com и протестируй сайт httpbin.org'")
-	fmt.Println("Для завершения введите 'exit'")
+	fmt.Println("🤖 TPING-AI: АВТОНОМНЫЙ ИИ-АГЕНТ С ПОЛНЫМ ДОСТУПОМ К ФАЙЛАМ")
+	fmt.Println("ИИ может читать, создавать, переписывать, удалять файлы и собирать софт.")
 	fmt.Println("==================================================================")
 
+	// Создаем историю диалога и закладываем туда системный промпт из config.go
 	var history []Message
 	history = append(history, Message{Role: "system", Content: systemPrompt})
-
+	
 	scanner := bufio.NewScanner(os.Stdin)
 
 	for {
 		fmt.Print("\nUser > ")
-		if !scanner.Scan() {
-			break
+		if !scanner.Scan() { 
+			break 
 		}
 		userInput := strings.TrimSpace(scanner.Text())
-		if strings.ToLower(userInput) == "exit" {
-			break
+		
+		if strings.ToLower(userInput) == "exit" { 
+			fmt.Println("Выход из программы...")
+			break 
 		}
-		if userInput == "" {
-			continue
+		if userInput == "" { 
+			continue 
 		}
 
+		// Записываем команду пользователя в память ИИ
 		history = append(history, Message{Role: "user", Content: userInput})
 
-		// Цикл автономного выполнения задач агентом (Thought -> Action -> Observation)
+		// Бесконечный цикл автономных размышлений (Thought -> Action -> Observation)
 		for {
 			fmt.Println("\n🧠 [ИИ планирует следующее действие]...")
+			
+			// Вызываем Ollama (функция лежит в agent.go)
 			aiResponse := CallOllama(history)
+			
+			// Запоминаем мысли ИИ
 			history = append(history, Message{Role: "assistant", Content: aiResponse})
 
-			// Проверяем, сгенерировал ли ИИ команду для вызова инструмента
+			// Парсим ответ на наличие вызова системного инструмента
 			tool, param := ParseToolCall(aiResponse)
-			if tool == "" {
-				// Если ИИ не вызывает инструменты, значит он закончил работу и выдал финальный ответ
-				break
+			if tool == "" { 
+				// Если ИИ не вызвал инструмент, значит он закончил задачу или выдал финальный ответ
+				break 
 			}
 
-			fmt.Printf("\n⚙️ [Агент активирует системный метод]: %s %s\n", tool, param)
+			fmt.Printf("\n⚙️ [Агент активирует метод]: %s со значением: %s\n", tool, param)
 			var observation string
 
-			// Выполнение действия в зависимости от решения ИИ
+			// Выполнение физического действия на твоем ПК через функции из tools.go
 			switch tool {
-			case "TOOL_CLONE":
+			case "TOOL_CLONE": 
 				observation = CloneRepo(param)
-			case "TOOL_READ_FILES":
-				observation = ReadWorkspaceFiles()
-			case "TOOL_COMPILE":
+			case "TOOL_LIST_DIR": 
+				observation = ListDirectory(param)
+			case "TOOL_READ_FILE": 
+				observation = ReadSpecificFile(param)
+			case "TOOL_WRITE_FILE": 
+				observation = WriteSpecificFile(param)
+			case "TOOL_DELETE_FILE": 
+				observation = DeleteSpecificFile(param)
+			case "TOOL_COMPILE": 
 				observation = CompileProject(param)
-			case "TOOL_RUN":
+			case "TOOL_RUN": 
 				observation = RunBinary(param)
-			default:
-				observation = "Error: Unknown action tool."
+			default: 
+				observation = "Error: Unknown tool name used by AI."
 			}
 
-			fmt.Println("📥 Результат операции добавлен в контекст ИИ.")
-			// Возвращаем реальный результат работы утилиты/компилятора обратно в память нейросети
+			fmt.Println("📥 Результат операции добавлен в память ИИ.")
+			
+			// Возвращаем реальный ответ операционной системы обратно в контекст нейросети
 			history = append(history, Message{
 				Role:    "user",
 				Content: fmt.Sprintf("[SYSTEM OBSERVATION]:\n%s\nAnalyze this output and decide on your next step.", observation),
